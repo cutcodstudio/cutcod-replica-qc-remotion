@@ -1,0 +1,17 @@
+import {writeFileSync} from 'node:fs';
+import {dirname, resolve, join} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {spawnSync} from 'node:child_process';
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const output = join(root, 'out/Replica-QC-pure-remotion.mp4');
+const r = spawnSync(process.env.FFPROBE || 'ffprobe', ['-v','error','-count_frames','-show_streams','-show_format','-of','json',output], {encoding:'utf8',windowsHide:true,shell:false});
+if (r.error) throw r.error;
+if (r.status !== 0) throw new Error(r.stderr);
+const probe = JSON.parse(r.stdout);
+writeFileSync(join(root,'out/ffprobe.json'), JSON.stringify(probe,null,2)+'\n');
+const v = probe.streams.find(s => s.codec_type === 'video');
+const a = probe.streams.find(s => s.codec_type === 'audio');
+const pass = !!v && v.width === 1920 && v.height === 1080 && v.r_frame_rate === '30/1' && Number(v.nb_read_frames) === 310 && !!a && Math.abs(Number(v.duration)-310/30)<0.05 && Math.abs(Number(probe.format.duration)-10.346)<0.1;
+writeFileSync(join(root,'out/verification.json'), JSON.stringify({pass,output,expected:{width:1920,height:1080,fps:30,frames:310,videoDuration:310/30,containerDurationApprox:10.346},scope:'Technical checks only; no claim of pixel-identical reproduction'},null,2)+'\n');
+if (!pass) throw new Error('Output differs from the expected front composition. See out/ffprobe.json');
+console.log('PASS: 1920x1080, 30fps, 310 frames, full audio present');
